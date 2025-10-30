@@ -17,7 +17,7 @@ import base64
 # === Settings ===
 MAIN_KEY = base64.b64decode('WWcmdGMlREV1aDYlWmNeOA==')
 MAIN_IV = base64.b64decode('Nm95WkRyMjJFM3ljaGpNJQ==')
-RELEASEVERSION = "OB50"
+RELEASEVERSION = "OB51"
 USERAGENT = "Dalvik/2.1.0 (Linux; U; Android 13; CPH2095 Build/RKQ1.211119.001)"
 SUPPORTED_REGIONS = {"IND", "BR", "US", "SAC", "NA", "SG", "RU", "ID", "TW", "VN", "TH", "ME", "PK", "CIS", "BD", "EU"}
 
@@ -54,13 +54,18 @@ def get_account_credentials(region: str) -> str:
     elif r in {"BR", "US", "SAC", "NA"}:
         return "uid=uid&password=password"
     else:
-        return "uid=uid&password=password"
+        return "uid=4182943568&password=C4_RIZAKYI_BNGX_VIP_TGHEPCML"
 
 # === Token Generation ===
 async def get_access_token(account: str):
     url = "https://ffmconnect.live.gop.garenanow.com/oauth/guest/token/grant"
     payload = account + "&response_type=token&client_type=2&client_secret=2ee44819e9b4598845141067b281621874d0d5d7af9d8f7e00c1e54715b7d1e3&client_id=100067"
-    headers = {'User-Agent': USERAGENT, 'Connection': "Keep-Alive", 'Accept-Encoding': "gzip", 'Content-Type': "application/x-www-form-urlencoded"}
+    headers = {
+        'User-Agent': USERAGENT,
+        'Connection': "Keep-Alive",
+        'Accept-Encoding': "gzip",
+        'Content-Type': "application/x-www-form-urlencoded"
+    }
     async with httpx.AsyncClient() as client:
         resp = await client.post(url, data=payload, headers=headers)
         data = resp.json()
@@ -74,17 +79,22 @@ async def create_jwt(region: str):
     payload = aes_cbc_encrypt(MAIN_KEY, MAIN_IV, proto_bytes)
     url = "https://loginbp.ggblueshark.com/MajorLogin"
     headers = {
-        'User-Agent': USERAGENT, 'Connection': "Keep-Alive", 'Accept-Encoding': "gzip",
-        'Content-Type': "application/octet-stream", 'Expect': "100-continue",
-        'X-Unity-Version': "2018.4.11f1", 'X-GA': "v1 1", 'ReleaseVersion': RELEASEVERSION
+        'User-Agent': USERAGENT,
+        'Connection': "Keep-Alive",
+        'Accept-Encoding': "gzip",
+        'Content-Type': "application/octet-stream",
+        'Expect': "100-continue",
+        'X-Unity-Version': "2018.4.11f1",
+        'X-GA': "v1 1",
+        'ReleaseVersion': RELEASEVERSION
     }
     async with httpx.AsyncClient() as client:
         resp = await client.post(url, data=payload, headers=headers)
         msg = json.loads(json_format.MessageToJson(decode_protobuf(resp.content, FreeFire_pb2.LoginRes)))
         cached_tokens[region] = {
-            'token': f"Bearer {msg.get('token','0')}",
-            'region': msg.get('lockRegion','0'),
-            'server_url': msg.get('serverUrl','0'),
+            'token': f"Bearer {msg.get('token', '0')}",
+            'region': msg.get('lockRegion', '0'),
+            'server_url': msg.get('serverUrl', '0'),
             'expires_at': time.time() + 25200
         }
 
@@ -105,23 +115,19 @@ async def get_token_info(region: str) -> Tuple[str, str, str]:
     info = cached_tokens[region]
     return info['token'], info['region'], info['server_url']
 
-async def get_region_by_uid(uid: str) -> str:
-    """Fetch player region using external API"""
-    async with httpx.AsyncClient() as client:
-        resp = await client.get(f"https://free-lord-region.vercel.app/region?uid={uid}")
-        if resp.status_code != 200:
-            raise ValueError("Failed to fetch region")
-        data = resp.json()
-        return data.get("region", "").upper()
-
 async def GetAccountInformation(uid, unk, region, endpoint):
     payload = await json_to_proto(json.dumps({'a': uid, 'b': unk}), main_pb2.GetPlayerPersonalShow())
     data_enc = aes_cbc_encrypt(MAIN_KEY, MAIN_IV, payload)
     token, lock, server = await get_token_info(region)
     headers = {
-        'User-Agent': USERAGENT, 'Connection': "Keep-Alive", 'Accept-Encoding': "gzip",
-        'Content-Type': "application/octet-stream", 'Expect': "100-continue",
-        'Authorization': token, 'X-Unity-Version': "2018.4.11f1", 'X-GA': "v1 1",
+        'User-Agent': USERAGENT,
+        'Connection': "Keep-Alive",
+        'Accept-Encoding': "gzip",
+        'Content-Type': "application/octet-stream",
+        'Expect': "100-continue",
+        'Authorization': token,
+        'X-Unity-Version': "2018.4.11f1",
+        'X-GA': "v1 1",
         'ReleaseVersion': RELEASEVERSION
     }
     async with httpx.AsyncClient() as client:
@@ -176,21 +182,21 @@ def format_response(data):
 @app.route('/info')
 async def get_account_info():
     uid = request.args.get('uid')
+    region = request.args.get('region', '').upper()
+
     if not uid:
         return jsonify({"error": "Please provide UID."}), 400
+    if not region:
+        return jsonify({"error": "Please provide region parameter."}), 400
+    if region not in SUPPORTED_REGIONS:
+        return jsonify({"error": f"Unsupported region '{region}'"}), 400
     
     try:
-        # Get region from external API
-        region = await get_region_by_uid(uid)
-        if not region or region not in SUPPORTED_REGIONS:
-            return jsonify({"error": "Invalid region or unsupported region"}), 400
-        
-        # Get account information
         return_data = await GetAccountInformation(uid, "7", region, "/GetPlayerPersonalShow")
         formatted = format_response(return_data)
         return jsonify(formatted), 200
     
-    except Exception as e:
+    except Exception:
         return jsonify({"error": "Invalid UID or server error. Please try again."}), 500
 
 @app.route('/refresh', methods=['GET', 'POST'])
@@ -211,4 +217,3 @@ if __name__ == '__main__':
     asyncio.set_event_loop(loop)
     loop.run_until_complete(startup())
     app.run(host='0.0.0.0', port=5080, debug=True)
-    
